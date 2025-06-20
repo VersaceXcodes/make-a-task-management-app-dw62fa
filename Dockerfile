@@ -1,31 +1,35 @@
-# Stage 1: Build the Vite React frontend
-FROM node:18 AS frontend-build
+# Production stage
+FROM node:20-slim as frontend-build
 WORKDIR /app/vitereact
-# Copy package files and install dependencies with --legacy-peer-deps
-COPY vitereact/package.json  ./
+COPY vitereact/package*.json ./
 RUN npm install --legacy-peer-deps
 RUN npm install --save-dev eslint-plugin-import eslint-plugin-react @typescript-eslint/parser @typescript-eslint/eslint-plugin
 RUN npm install --save-dev eslint-import-resolver-typescript
-# Copy the rest of the frontend files and build
 COPY vitereact ./
-
 RUN npm run build
 
-# Stage 2: Set up the Node.js backend
-FROM node:18
+# Backend build stage
+FROM node:20-slim as backend-builder
 WORKDIR /app/backend
-# Copy package files and install production dependencies
-COPY backend/package.json  ./
-# Install dependencies
-RUN npm install --production
-# Copy the backend files
-COPY backend ./
-# Copy the frontend build output to a directory served by the backend
-COPY --from=frontend-build /app/vitereact/public /app/backend/public
-# Expose the port the backend will run on
-EXPOSE 3000
+COPY backend/package*.json ./
+RUN npm install
+COPY backend/ ./
+
+# Production stage
+FROM node:20-slim
+WORKDIR /app/backend
+
+# Copy built frontend from frontend-build stage
+COPY --from=frontend-build /app/vitereact/dist /app/backend/public
+# Copy backend from backend-builder
+COPY --from=backend-builder /app/backend ./
+
 # Set environment variables
-ENV PORT=3000
-ENV HOST=0.0.0.0
-# Command to start the backend server - make sure it listens on all interfaces
-CMD ["sh", "-c", "node initdb.js && NODE_ENV=production node server.js"]
+ENV NODE_ENV=production
+ENV PORT=8080
+
+# Expose port
+EXPOSE 8080
+
+# Start the application
+CMD ["node", "server.js"]
